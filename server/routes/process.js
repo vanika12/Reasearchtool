@@ -14,7 +14,7 @@ const getGroqClient = () => {
 
 export const processRoute = router.post("/", async (req, res) => {
   try {
-    const { text, filename } = req.body
+    const { text, html, filename } = req.body
 
     if (!text) {
       return res.status(400).json({ error: "No text provided for processing" })
@@ -26,6 +26,7 @@ export const processRoute = router.post("/", async (req, res) => {
 
     console.log("[v0] Processing document with GROQ AI...")
     console.log("[v0] Document length:", text.length, "characters")
+    console.log("[v0] Has original HTML:", !!html)
     console.log("[v0] Filename:", filename)
 
     const groq = getGroqClient()
@@ -193,6 +194,7 @@ Return ONLY the JSON object, no additional text or explanations.
 
     res.json({
       ...processedData,
+      originalHtml: html || processedData.originalHtml || null,
       originalFilename: filename,
       processingTimestamp: new Date().toISOString(),
       processingModel: "llama3-70b-8192",
@@ -229,6 +231,7 @@ Return ONLY the JSON object, no additional text or explanations.
 
         res.json({
           ...validatedData,
+          originalHtml: req.body.html || null,
           originalFilename: req.body.filename,
           processingTimestamp: new Date().toISOString(),
           processingModel: "fallback",

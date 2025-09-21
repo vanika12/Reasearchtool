@@ -1,3 +1,5 @@
+import { JSDOM } from "jsdom"
+
 const FONT_FAMILY_TIMES = "font-family: 'Times New Roman';"
 const FONT_SIZE_10 = "font-size: 10pt;"
 const FONT_SIZE_12 = "font-size: 12pt;"
@@ -11,6 +13,48 @@ const LINE_HEIGHT_1 = "line-height: 1.0;"
 // Escape HTML safely inside cells
 const escapeHtml = (s = "") =>
   s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+// Normalize tables to have our styling class in HTML/PDF
+const normalizeTables = (html = "") => html.replace(/<table(?![^>]*class=)/gi, '<table class="journal-table"')
+
+// Try to slice original HTML (from DOCX) into fragments per detected heading
+const sliceHtmlIntoSections = (originalHtml = "", sectionHeadings = []) => {
+  if (!originalHtml || !sectionHeadings.length) return {}
+  const dom = new JSDOM(`<div id="root">${originalHtml}</div>`)
+  const doc = dom.window.document
+  const container = doc.querySelector('#root')
+  if (!container) return {}
+  const allNodes = Array.from(container.childNodes)
+  const candidates = Array.from(container.querySelectorAll('h1,h2,h3,h4,h5,h6,p,strong,b'))
+  const norm = (s) => (s || "").replace(/[\s\u00A0]+/g, ' ').trim().toLowerCase()
+  const headingPositions = {}
+  sectionHeadings.forEach((heading) => {
+    const target = norm(heading)
+    if (!target) return
+    let found = null
+    for (const el of candidates) {
+      if (norm(el.textContent).includes(target)) { found = el; break }
+    }
+    if (found) {
+      let node = found
+      while (node && node.parentNode !== container) node = node.parentNode
+      if (node) {
+        const idx = allNodes.indexOf(node)
+        if (idx >= 0) headingPositions[heading] = idx
+      }
+    }
+  })
+  const ordered = sectionHeadings.filter(h => headingPositions[h] !== undefined).sort((a,b)=>headingPositions[a]-headingPositions[b])
+  const out = {}
+  for (let i=0;i<ordered.length;i++) {
+    const h = ordered[i]
+    const start = headingPositions[h]
+    const end = i+1<ordered.length ? headingPositions[ordered[i+1]] : allNodes.length
+    const frag = allNodes.slice(start, end).map(n=>n.outerHTML||n.textContent||"").join("")
+    out[h] = normalizeTables(frag)
+  }
+  return out
+}
 
 export const formatToAcademicStandard = async (processedData) => {
   try {
@@ -26,6 +70,7 @@ export const formatToAcademicStandard = async (processedData) => {
     const metadata = processedData.metadata || {}
     const originalFilename = processedData.originalFilename || "document"
     const publicationInfo = processedData.publicationInfo || null
+    const originalHtml = processedData.originalHtml || null
 
     console.log("[v0] Extracted title:", title)
     console.log("[v0] Extracted authors:", authors)
@@ -183,12 +228,17 @@ export const formatToAcademicStandard = async (processedData) => {
     const formatSections = (sectionsList) => {
       if (!sectionsList || sectionsList.length === 0) return []
 
+      const htmlSlices = originalHtml ? sliceHtmlIntoSections(originalHtml, sectionsList.map(s => s.heading || "")) : {}
+
       return sectionsList.map((section) => {
         const sectionType = section.type?.toLowerCase() || "other"
+        const heading = section.heading || "Untitled Section"
+        const htmlContent = htmlSlices[heading]
+        const content = htmlContent ? htmlContent : preserveOriginalFormatting(section.content || "")
 
         return {
-          heading: section.heading || "Untitled Section",
-          content: preserveOriginalFormatting(section.content || ""),
+          heading,
+          content,
           type: sectionType,
           formatting: {
             headingStyle: getHeadingStyle(sectionType),
@@ -339,6 +389,15 @@ export const formatToAcademicStandard = async (processedData) => {
     }
 
     // Create formatted document structure
+    // If slicing failed to produce any HTML content for sections, keep a full HTML body fallback
+    const sliceHitCount = sections.filter(s => {
+      const h = s.heading || ""
+      const m = originalHtml ? sliceHtmlIntoSections(originalHtml, [h]) : {}
+      return m[h]
+    }).length
+
+    const fullHtmlBody = originalHtml && sliceHitCount === 0 ? normalizeTables(originalHtml) : null
+
     const formattedDocument = {
       metadata: {
         ...metadata,
@@ -381,6 +440,7 @@ export const formatToAcademicStandard = async (processedData) => {
         },
       },
       sections: formatSections(sections),
+      htmlBody: fullHtmlBody, // fallback raw HTML body (from DOCX) preserving tables and images
       references: {
         heading: references?.heading || "REFERENCES",
         content: formatReferences(references),

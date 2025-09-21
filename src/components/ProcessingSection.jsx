@@ -35,6 +35,7 @@ const ProcessingSection = ({ documentData, onProcessingComplete }) => {
 
       const processResponse = await axios.post("http://localhost:5000/api/process", {
         text: extractResponse.data.text,
+        html: extractResponse.data.html,
         filename: documentData.name,
       })
 

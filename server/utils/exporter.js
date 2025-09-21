@@ -448,6 +448,15 @@ export const exportToPDF = async (formattedDocument) => {
     const headerSecondLine = headerParts.join(" | ")
 
     const startPageNumber = formattedDocument.startPageNumber || 1;
+
+    // Add this before page.pdf()
+await page.addStyleTag({
+  content: `
+    @page {
+      margin-bottom: 80px !important; /* Ensure enough space for footer */
+    }
+  `
+});
     const pdfBuffer = await page.pdf({
       format: "A4",
       margin: {
@@ -488,18 +497,43 @@ export const exportToPDF = async (formattedDocument) => {
       `,
      
 
-
-
-   footerTemplate: `
-        <div style="font-size: 10pt; width: 100%; font-family: 'Times New Roman', serif; padding: 0 0.42in;">
-          <div style="border-top: 2px solid #000; margin-top: 5pt;"></div>
-          <div style="padding-top: 5pt; display: flex; justify-content: space-between; align-items: center;">
-            <div style="flex: 1; text-align: left;">Page <span class="pageNumber"></span></div>
-            <div style="flex: 1; text-align: center;">www.rsisinternational.org</div>
-            <div style="flex: 1;"></div>
-          </div>
-        </div>
-      `,
+      footerTemplate: `
+  <div style="
+    font-size: 10pt; 
+    width: 100%; 
+    font-family: 'Times New Roman', serif; 
+    padding: 0 0.42in;
+    background-color: rgba(255,0,0,0.1); /* Light red background for debugging */
+    height: 50px; /* Fixed height to ensure visibility */
+  ">
+    <!-- Very visible black line -->
+    <div style="
+      border-top: 1px solid #000000;
+      margin: 0 auto; /* Center the line */
+      width: 100%; /* Control the width of the line */
+      max-width: 8in; /* Maximum width for the line */
+      height: 1px;
+    "></div>
+    
+    <div style="padding-top: 10pt; display: flex; justify-content: space-between; align-items: center;">
+      <div style="flex: 1; text-align: left;">Page <span class="pageNumber"></span></div>
+      <div style="flex: 1; text-align: center;">www.rsisinternational.org</div>
+      <div style="flex: 1;"></div>
+    </div>
+  </div>
+`,
+  //  footerTemplate: `
+  //       <div style="font-size: 10pt; width: 100%; font-family: 'Times New Roman', serif; padding: 0 0.42in;">
+  //         <div style="border-top: 2px solid #000; margin-top: 5pt;"></div>
+  //         <!-- Black line at the top -->
+  //       <div style="flex: 0 0 auto; height: 1px; border-left: 1px solid #000; margin-bottom: 5pt;"></div>
+  //         <div style="padding-top: 5pt; display: flex; justify-content: space-between; align-items: center;">
+  //           <div style="flex: 1; text-align: left;">Page <span class="pageNumber"></span></div>
+  //           <div style="flex: 1; text-align: center;">www.rsisinternational.org</div>
+  //           <div style="flex: 1;"></div>
+  //         </div>
+  //       </div>
+  //     `,
 
    
 
