@@ -56,6 +56,42 @@ const sliceHtmlIntoSections = (originalHtml = "", sectionHeadings = []) => {
   return out
 }
 
+// Remove stray short lines immediately before the first table in a section
+const cleanHtmlBeforeTable = (html = "") => {
+  try {
+    const dom = new JSDOM(`<div id="root">${html}</div>`)
+    const root = dom.window.document.querySelector('#root')
+    const table = root?.querySelector('table')
+    if (!table) return html
+
+    const isShort = (s) => {
+      const t = (s || '').replace(/\s+/g, ' ').trim()
+      if (!t) return true
+      if (/^(table|figure)\b/i.test(t)) return false
+      if (/^source\b/i.test(t)) return false
+      return t.length <= 50
+    }
+
+    let node = table.previousSibling
+    while (node) {
+      const prev = node.previousSibling
+      if (node.nodeType === 1 || node.nodeType === 3) {
+        const txt = node.textContent || ''
+        if (isShort(txt)) {
+          node.parentNode?.removeChild(node)
+          node = prev
+          continue
+        }
+      }
+      break
+    }
+
+    return root.innerHTML
+  } catch {
+    return html
+  }
+}
+
 export const formatToAcademicStandard = async (processedData) => {
   try {
     console.log("[v0] Starting academic formatting...")
@@ -234,7 +270,7 @@ export const formatToAcademicStandard = async (processedData) => {
         const sectionType = section.type?.toLowerCase() || "other"
         const heading = section.heading || "Untitled Section"
         const htmlContent = htmlSlices[heading]
-        const content = htmlContent ? htmlContent : preserveOriginalFormatting(section.content || "")
+        const content = htmlContent ? cleanHtmlBeforeTable(htmlContent) : preserveOriginalFormatting(section.content || "")
 
         return {
           heading,
