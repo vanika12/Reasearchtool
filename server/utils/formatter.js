@@ -92,6 +92,24 @@ const cleanHtmlBeforeTable = (html = "") => {
   }
 }
 
+// New centralized function to format raw text content into final HTML
+const formatContentToHtml = (text) => {
+  if (!text) return "";
+
+  // This logic was previously in exporter.js. It correctly handles paragraphs and tables.
+  const contentWithTables = formatTablesAndFigures(text);
+  const blocks = contentWithTables.split(/\n\s*\n/);
+
+  return blocks.map(block => {
+    const trimmedBlock = applyLatexFormatting(formatCitations(block.trim()));
+    if (!trimmedBlock) return "";
+
+    // Don't wrap existing block elements like tables in a <p> tag
+    if (trimmedBlock.startsWith('<table') || trimmedBlock.startsWith('<div')) return trimmedBlock;
+    return `<p>${trimmedBlock}</p>`;
+  }).join("");
+};
+
 export const formatToAcademicStandard = async (processedData) => {
   try {
     console.log("[v0] Starting academic formatting...")
@@ -264,13 +282,46 @@ export const formatToAcademicStandard = async (processedData) => {
     const formatSections = (sectionsList) => {
       if (!sectionsList || sectionsList.length === 0) return []
 
-      const htmlSlices = originalHtml ? sliceHtmlIntoSections(originalHtml, sectionsList.map(s => s.heading || "")) : {}
+      const htmlSlices = originalHtml
+        ? sliceHtmlIntoSections(
+            originalHtml,
+            sectionsList.map((s) => s.heading || ""),
+          )
+        : {}
 
       return sectionsList.map((section) => {
         const sectionType = section.type?.toLowerCase() || "other"
         const heading = section.heading || "Untitled Section"
-        const htmlContent = htmlSlices[heading]
-        const content = htmlContent ? cleanHtmlBeforeTable(htmlContent) : preserveOriginalFormatting(section.content || "")
+        let htmlContent = htmlSlices[heading]
+        let rawContent = (section.content || "").trim();
+
+        // Universal duplicate heading removal logic
+        const norm = (s) => (s || "").replace(/<[^>]+>|[*_~`#\d.\s]/g, "").toLowerCase();
+        const normalizedHeading = norm(heading);
+
+        if (htmlContent) {
+            // If we have HTML content, parse it and remove the first element if it's the heading
+            try {
+                const dom = new JSDOM(`<div>${htmlContent}</div>`);
+                const container = dom.window.document.body.firstChild;
+                const firstElement = container.firstElementChild;
+                if (firstElement && norm(firstElement.textContent) === normalizedHeading) {
+                    firstElement.remove();
+                    htmlContent = container.innerHTML; // Update htmlContent with the change
+                }
+            } catch (e) { /* ignore parsing errors */ }
+        } else {
+            // If we have raw text, check the first line
+            const contentLines = rawContent.split('\n');
+            const firstLine = (contentLines[0] || '').trim();
+            if (contentLines.length > 0 && norm(firstLine) === normalizedHeading) {
+                rawContent = contentLines.slice(1).join('\n').trim();
+            }
+        }
+
+        const content = htmlContent
+          ? cleanHtmlBeforeTable(htmlContent)
+          : formatContentToHtml(rawContent)
 
         return {
           heading,
@@ -283,7 +334,7 @@ export const formatToAcademicStandard = async (processedData) => {
           subsections:
             section.subsections?.map((sub) => ({
               heading: sub.heading,
-              content: preserveOriginalFormatting(sub.content || ""),
+              content: formatContentToHtml(sub.content || ""),
               formatting: {
                 headingStyle: `${FONT_SIZE_12} ${FONT_WEIGHT_BOLD} ${FONT_FAMILY_TIMES} margin-top: 12pt; margin-bottom: 6pt;`,
                 contentStyle: `${FONT_SIZE_12} ${FONT_FAMILY_TIMES} ${LINE_HEIGHT_1} ${TEXT_ALIGN_JUSTIFY} margin-bottom: 12pt;`,
@@ -291,19 +342,6 @@ export const formatToAcademicStandard = async (processedData) => {
             })) || [],
         }
       })
-    }
-
-    const preserveOriginalFormatting = (content) => {
-      if (!content) return "";
-      // The previous implementation was flawed and broke paragraph structure.
-      // The AI model is already instructed to preserve original formatting, including
-      // paragraph breaks (which are represented as double newlines).
-      // By simply passing the content through, we trust the AI's output and
-      // allow the exporter to handle the rendering correctly and robustly.
-      return content
-    .split(/\n\s*\n/) // split on double newlines (paragraphs)
-    .map((para) => `<p style="${FONT_SIZE_12} ${FONT_FAMILY_TIMES} ${LINE_HEIGHT_1} ${TEXT_ALIGN_JUSTIFY} margin-bottom: 12pt;">${para.trim()}</p>`)
-    .join("");
     }
 
     const getHeadingStyle = (sectionType) => {
@@ -364,6 +402,20 @@ export const formatToAcademicStandard = async (processedData) => {
       }
 
       return []
+    }
+
+    // Fix 2: Clean up references duplicated in the last section's content
+    const formattedSections = formatSections(sections)
+    const formattedReferences = formatReferences(references)
+
+    if (formattedSections.length > 0 && formattedReferences.length > 0) {
+      const lastSection = formattedSections[formattedSections.length - 1]
+      const refHeading = references?.heading || "REFERENCES"
+      const refHeadingIndex = lastSection.content.toLowerCase().indexOf(refHeading.toLowerCase())
+
+      if (refHeadingIndex !== -1) {
+        lastSection.content = lastSection.content.substring(0, refHeadingIndex)
+      }
     }
 
     const formatAffiliations = (authorsList) => {
@@ -475,7 +527,7 @@ export const formatToAcademicStandard = async (processedData) => {
           content: `${FONT_SIZE_12} ${FONT_FAMILY_TIMES} font-style: italic; display: inline;`,
         },
       },
-      sections: formatSections(sections),
+      sections: formattedSections, // Use the cleaned sections
       htmlBody: fullHtmlBody, // fallback raw HTML body (from DOCX) preserving tables and images
       references: {
         heading: references?.heading || "REFERENCES",
@@ -484,7 +536,7 @@ export const formatToAcademicStandard = async (processedData) => {
           heading: `${FONT_SIZE_14} ${FONT_WEIGHT_BOLD} text-transform: uppercase; ${FONT_FAMILY_TIMES} text-align: left; margin-top: 20pt; margin-bottom: 10pt;`,
           content: `${FONT_SIZE_12} ${FONT_FAMILY_TIMES} ${LINE_HEIGHT_1}`,
         },
-      },                                                                          
+      },
       footer: {
         content: `Page {pageNumber}                                                    www.rsisinternational.org`,
         style: `${FONT_SIZE_10} ${FONT_FAMILY_TIMES} ${TEXT_ALIGN_CENTER} border-top: 1px solid #000; padding-top: 5pt ; margin-top: 5pt;`,

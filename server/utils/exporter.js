@@ -17,6 +17,7 @@ import {
   PageNumber,
   ImageRun,
 } from "docx";
+// changes ---header vasteee
 // import { Document, Packer, Paragraph, TextRun, AlignmentType, convertInchesToTwip } from "docx"
 import { applyLatexFormatting, formatCitations, formatTablesAndFigures } from "./formatter.js"
 import { generateCompleteLatexDocument } from "./latex-converter.js"
@@ -33,7 +34,7 @@ const imagePath = path.join(__dirname, "..", "..", "public", "rsis.jpg");
 const imageBuffer = fs.readFileSync(imagePath);
 const imageBase64 = imageBuffer.toString("base64");
 const imageSrc = `data:image/jpeg;base64,${imageBase64}`;
-
+const esc = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
 export const exportToHTML = async (formattedDocument) => {
   const {
     metadata,
@@ -49,6 +50,12 @@ export const exportToHTML = async (formattedDocument) => {
     publicationInfo,
   } = formattedDocument
 
+   const headerPartsTmp = []
+  if (header?.issn) headerPartsTmp.push(header.issn)
+  if (header?.doi) headerPartsTmp.push(header.doi)
+  if (header?.volume) headerPartsTmp.push(header.volume)
+  // const headerSecondLineHTML = esc(headerPartsTmp.join(" | "))
+    const headerSecondLineHTML = (typeof esc === "function") ? esc(headerPartsTmp.join(" | ")) : headerPartsTmp.join(" | ")
   const html = `
 <!DOCTYPE html>
 <html lang="en">
@@ -94,12 +101,12 @@ export const exportToHTML = async (formattedDocument) => {
         }
         
         .header-line {
-            margin-bottom: 5pt;
+            margin-bottom: 2pt;
         }
         
         .title {
             ${title.style}
-            margin: 20pt 0;
+            margin: 12pt 0;
         }
         
         .authors {
@@ -143,6 +150,7 @@ export const exportToHTML = async (formattedDocument) => {
         
         .affiliations {
             text-align: center;
+            font-weight:bold;
             font-size: 12pt;
             margin: 10pt 0;
         }
@@ -153,6 +161,8 @@ export const exportToHTML = async (formattedDocument) => {
         
         .publication-info {
             ${publicationInfo?.style || "text-align: center; font-size: 12pt; margin: 15pt 0;"}
+              line-heigh:1.5;
+            }
         }
         
         .abstract {
@@ -221,13 +231,18 @@ export const exportToHTML = async (formattedDocument) => {
             margin-bottom: 10pt;
         }
         
-        .reference-item {
-            margin-bottom: 6pt;
-            margin-left: 30pt; /* push references slightly to the right */
-            text-align: justify; /* optional for neat alignment */
-            // text-indent: -0.5in; /* Pull back the first line for the number */
+        .references-list { margin-top: 2pt;
+        padding-left: 20pt; /* shift everything to the right */ }
+        .reference-row {
+            display: grid;
+            grid-template-columns: 24pt 1fr; /* number column + text */
+            column-gap: 4pt;
+            align-items: start;
         }
-        
+        .reference-row .ref-num { text-align: left; }
+        .reference-row .ref-text { text-align: justify; }
+
+
         /* Citation and formatting styles */
         sup {
             font-size: 10pt;
@@ -249,6 +264,21 @@ export const exportToHTML = async (formattedDocument) => {
             text-align: center;
             margin: 12pt 0 6pt 0;
         }
+             /* Body header visible in HTML, hidden in print/PDF */
+        .body-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid #000;
+            padding: 0 0.42in 10pt;
+            margin-bottom: 20pt;
+            font-family: 'Times New Roman', serif;
+        }
+        .body-header .logo { flex: 0 0 auto; }
+        .body-header .logo img { height: 35px; }
+        .body-header .header-text { flex: 1; text-align: right; font-weight: bold; font-size: 10pt; }
+        .body-header .header-text span { font-size: 9pt; font-weight: normal; }
+
         
         /* Print styles */
         @media print {
@@ -259,11 +289,21 @@ export const exportToHTML = async (formattedDocument) => {
             .section-heading {
                 page-break-after: avoid;
             }
+            .body-header { display: none; }
         }
     </style>
 </head>
 <body>
     <div class="document-container">
+    <!-- HTML-visible header (hidden in print/PDF) -->
+        <div class="body-header">
+          <div class="logo"><img src="${imageSrc}" alt="Logo"/></div>
+          <div class="header-text">
+            ${esc(header?.content || "")}<br>
+            <span>${headerSecondLineHTML}</span>
+          </div>
+        </div>
+
         <!-- Removed duplicate header from body since it's handled by PDF header template -->
         
         <div class="title">${title.text}</div>
@@ -291,30 +331,14 @@ export const exportToHTML = async (formattedDocument) => {
         ${
           publicationInfo
             ? `
-        <div class="publication-info">
+        <div class="publication-info" style="line-height:1.5;">
             <strong>DOI:</strong> <a href="${publicationInfo.doi}" style="color: blue; text-decoration: underline;">${publicationInfo.doi}</a><br>
             <strong>Received:</strong> ${publicationInfo.received}; <strong>Accepted:</strong> ${publicationInfo.accepted}; <strong>Published:</strong> ${publicationInfo.published}
         </div>
         `
             : ""
         }
-        
-        ${
-          abstract.content
-            ? `
-        <div class="abstract">
-            <div class="abstract-heading">${abstract.heading}</div>
-            <div class="abstract-content">${applyLatexFormatting(formatCitations(abstract.content))
-              .split(/\n\s*\n/)
-              .map((p) => p.trim())
-              .filter((p) => p)
-              // .map((p) => `<p>${p.replace(/\n/g, "<br>")}</p>`)
-              .map((p) => `<p>${p}</p>`)
-              .join("")}</div>
-        </div>
-        `
-            : ""
-        }
+        ${abstract.content ? `<div class="abstract"><div class="abstract-heading">${abstract.heading}</div><div class="abstract-content">${abstract.content}</div></div>` : ""}
         
         ${
           keywords.content
@@ -334,15 +358,7 @@ export const exportToHTML = async (formattedDocument) => {
                 <div class="section-heading" style="${section.formatting.headingStyle}">
                     ${section.heading}
                 </div>
-                <div class="section-content" style="${section.formatting.contentStyle}">
-                    ${applyLatexFormatting(formatCitations(formatTablesAndFigures(section.content)))
-                      .split(/\n\s*\n/)
-                      .map((p) => p.trim())
-                      .filter((p) => p)
-                      .map((p) => `<p>${p}</p>`)
-                      // .map((p) => `<p>${p.replace(/\n/g, "<br>")}</p>`)
-                      .join("")}
-                </div>
+                <div class="section-content" style="${section.formatting.contentStyle}">${section.content}</div>
                 
                 ${
                   section.subsections && section.subsections.length > 0
@@ -353,15 +369,7 @@ export const exportToHTML = async (formattedDocument) => {
                             <div class="subsection-heading" style="${subsection.formatting.headingStyle}">
                                 ${subsection.heading}
                             </div>
-                            <div class="section-content" style="${subsection.formatting.contentStyle}">
-                                ${applyLatexFormatting(formatCitations(formatTablesAndFigures(subsection.content)))
-                                  .split(/\n\s*\n/)
-                                  .map((p) => p.trim())
-                                  .filter((p) => p)
-                                  .map((p) => `<p>${p}</p>`)
-                                  // .map((p) => `<p>${p.replace(/\n/g, "<br>")}</p>`)
-                                  .join("")}
-                            </div>
+                            <div class="section-content" style="${subsection.formatting.contentStyle}">${subsection.content}</div>
                         </div>
                     `,
                         )
@@ -378,9 +386,16 @@ export const exportToHTML = async (formattedDocument) => {
             ? `
         <div class="references">
             <div class="references-heading">${references.heading}</div>
-            ${references.content
-              .map((ref) => `<div class="reference-item">${ref.number}.&nbsp;&nbsp;${ref.text}</div>`)
-              .join("")}
+           <div class="references-list">
+              ${references.content
+                .map((ref) => `
+                  <div class="reference-row">
+                    <div class="ref-num">${ref.number}.</div>
+                    <div class="ref-text">${ref.text}</div>
+                  </div>
+                `)
+                .join("")}
+            </div>
         </div>
         `
             : ""
@@ -392,6 +407,7 @@ export const exportToHTML = async (formattedDocument) => {
 
   return html
 }
+
 
 export const exportToPDF = async (formattedDocument) => {
   console.log("[v0] Starting PDF generation...")
@@ -447,13 +463,11 @@ export const exportToPDF = async (formattedDocument) => {
     }
     const headerSecondLine = headerParts.join(" | ")
 
-    const startPageNumber = formattedDocument.startPageNumber || 1;
-
     // Add this before page.pdf()
 await page.addStyleTag({
   content: `
     @page {
-      margin-bottom: 80px !important; /* Ensure enough space for footer */
+      margin-bottom: 50px !important; /* Ensure enough space for footer */
     }
   `
 });
@@ -480,10 +494,9 @@ await page.addStyleTag({
            <!-- Logo at top-left -->
       <div style="flex: 0 0 auto; text-align: left;">
         <img src="${imageSrc}" alt="Logo" style="height:35px;"/>
-
       </div>
              <!-- Journal header content centered -->
-      <div style="flex: 1; text-align: center;">
+      <div style=\"flex: 1; text-align: right;\">
         ${headerData.content || ""}<br>
         <span style="font-size: 9pt; font-weight: normal;">
           ${headerSecondLine}
@@ -502,26 +515,25 @@ await page.addStyleTag({
     font-size: 10pt; 
     width: 100%; 
     font-family: 'Times New Roman', serif; 
-    padding: 0 0.42in;
-    background-color: rgba(255,0,0,0.1); /* Light red background for debugging */
-    height: 50px; /* Fixed height to ensure visibility */
+    padding: 0 0.42in; /* Match left/right page margins */
+    box-sizing: border-box;
   ">
     <!-- Very visible black line -->
     <div style="
       border-top: 1px solid #000000;
       margin: 0 auto; /* Center the line */
       width: 100%; /* Control the width of the line */
-      max-width: 8in; /* Maximum width for the line */
       height: 1px;
     "></div>
     
-    <div style="padding-top: 10pt; display: flex; justify-content: space-between; align-items: center;">
-      <div style="flex: 1; text-align: left;">Page <span class="pageNumber"></span></div>
+    <div style="padding-top:2pt; display: flex; justify-content: space-between; align-items: center;">
+       <div style="flex:1; text-align:left;">Page <span class="pageNumber"></span></div>
       <div style="flex: 1; text-align: center;">www.rsisinternational.org</div>
       <div style="flex: 1;"></div>
     </div>
   </div>
 `,
+
   //  footerTemplate: `
   //       <div style="font-size: 10pt; width: 100%; font-family: 'Times New Roman', serif; padding: 0 0.42in;">
   //         <div style="border-top: 2px solid #000; margin-top: 5pt;"></div>
@@ -575,7 +587,13 @@ export const exportToDocx = async (formattedDocument) => {
     formattedDocument;
 
   const docChildren = [];
-
+  // ---------- Add spacing between header and title ----------
+docChildren.push(
+  new Paragraph({
+    text: "", // blank line
+    spacing: { after: 200 }, // ~10pt of space
+  }),
+);
   // ---------- Title ----------
   docChildren.push(
     new Paragraph({
@@ -594,12 +612,15 @@ export const exportToDocx = async (formattedDocument) => {
     }),
   );
 
-  // ---------- Affiliations ----------
+ // ---------- Affiliations ----------
   if (affiliations && affiliations.length > 0) {
     affiliations.forEach((aff) => {
       docChildren.push(
         new Paragraph({
-          children: [new TextRun({ text: aff.text, size: 24 })],
+          children: [
+            new TextRun({ text: String(aff.number), superScript: true, size: 18 }),
+            new TextRun({ text: " " + aff.text, size: 24, bold: true }),
+          ],
           alignment: AlignmentType.CENTER,
           spacing: { after: 120 },
         }),
@@ -607,6 +628,7 @@ export const exportToDocx = async (formattedDocument) => {
     });
     docChildren.push(new Paragraph({ text: "" }));
   }
+
 
   // ---------- Abstract ----------
   if (abstract && abstract.content) {
@@ -763,56 +785,42 @@ cleanParagraphs.forEach((p) => {
     references.content.forEach((ref) => {
       docChildren.push(
         new Paragraph({
-          children: [
-            new TextRun({ text: `${ref.number}. ${ref.text}`, size: 24 }),
-          ],
+          children: [new TextRun({ text: `${ref.number}. ${ref.text}`, size: 24 })],
           alignment: AlignmentType.JUSTIFIED,
-          indent: { left: convertInchesToTwip(0.5) },
-          spacing: { after: 120 },
+          indent: {
+            left: convertInchesToTwip(0.25),
+            hanging: convertInchesToTwip(0.25),
+          },
+          spacing: { after:0 },
         }),
       );
     });
   }
 
-  let logoImage;
-if (header?.logoPath && fs.existsSync(header.logoPath)) {
-  const logoBuffer = fs.readFileSync(header.logoPath);
-  logoImage = new ImageRun({ data: logoBuffer, transformation: { width: 50, height: 50 } });
-}
 
-const headerChildren = [];
+ // Build a minimal header without logo: right-aligned lines only
+  const headerChildren = [];
 
-if (logoImage) {
   headerChildren.push(
     new Paragraph({
-      children: [logoImage],
-      alignment: AlignmentType.LEFT,
-      spacing: { after: 100 },
+      children: [new TextRun({ text: header?.content || "", bold: true, size: 22 })],
+      alignment: AlignmentType.RIGHT,
+      spacing: { after: 50 },
     }),
   );
-}
 
-headerChildren.push(
-  new Paragraph({
-    children: [new TextRun({ text: header?.content || "", bold: true, size: 22 })],
-    alignment: AlignmentType.CENTER,
-    spacing: { after: 50 },
-  }),
-);
-
-const headerParts = [];
-if (header?.issn) headerParts.push(header.issn);
-if (header?.doi) headerParts.push(header.doi);
-if (header?.volume) headerParts.push(header.volume);
-
-if (headerParts.length > 0) {
-  headerChildren.push(
-    new Paragraph({
-      children: [new TextRun({ text: headerParts.join(" | "), size: 20 })],
-      alignment: AlignmentType.CENTER,
-    }),
-  );
-}
+  const hp = [];
+  if (header?.issn) hp.push(header.issn);
+  if (header?.doi) hp.push(header.doi);
+  if (header?.volume) hp.push(header.volume);
+  if (hp.length > 0) {
+    headerChildren.push(
+      new Paragraph({
+        children: [new TextRun({ text: hp.join(" | "), size: 20 })],
+        alignment: AlignmentType.RIGHT,
+      }),
+    );
+  }
 
 const docxHeader = new Header({
   children: [
@@ -829,6 +837,8 @@ const docxHeader = new Header({
   ],
 });
 
+// chnages started 
+
 const docxFooter = new Footer({
   children: [
     new Paragraph({
@@ -838,18 +848,22 @@ const docxFooter = new Footer({
           style: BorderStyle.SINGLE,
           size: 6,
         },
+        spacing: { before: 0, after: 0 },
       },
     }),
     new Paragraph({
       children: [new TextRun({ text: "Page ", color: "000000" }), new TextRun({ children: [PageNumber.CURRENT], color: "000000" })],
       alignment: AlignmentType.LEFT,
+      spacing: { before: 0, after: 0 }, // 👈 removes
     }),
     new Paragraph({
       children: [new TextRun({ text: "www.rsisinternational.org", size: 20, color: "000000" })],
       alignment: AlignmentType.CENTER,
+      spacing: { before: 0, after: 0 }, 
     }),
   ],
 });
+
   // ---------- Document ----------
   const doc = new Document({
     sections: [
@@ -870,6 +884,7 @@ const docxFooter = new Footer({
         children: docChildren,
       },
     ],
+    compatibility: { useOldTables: true },
   });
 
   const buffer = await Packer.toBuffer(doc);

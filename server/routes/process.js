@@ -161,6 +161,40 @@ Return ONLY the JSON object, no additional text or explanations.
       console.log("[v0] Attempting to parse JSON...")
       processedData = JSON.parse(jsonString)
 
+      // Aggressive fix for bogus sections created from table content
+      if (processedData.sections && processedData.sections.length > 0) {
+        const sections = processedData.sections;
+        const finalSections = [];
+        let i = 0;
+        while (i < sections.length) {
+          let currentSection = sections[i];
+          let j = i + 1;
+          
+          // Look ahead for a sequence of bogus sections that represent a table
+          while (j < sections.length) {
+            const nextSection = sections[j];
+            const nextHeading = (nextSection.heading || '').trim();
+            const nextContent = (nextSection.content || '').trim();
+
+            // Corrected Heuristic: A heading that is numeric, a percentage, or very short is almost always bogus,
+            // regardless of content length (as it might contain the full table).
+            const isNumericOrVeryShort = /^\d*[\d.,%*]*$/.test(nextHeading) || nextHeading.length < 5;
+            const isBogus = isNumericOrVeryShort && !/introduction|method|result|discussion|conclusion|literature|appendix|reference/i.test(nextHeading);
+
+            if (isBogus) {
+              // It's a bogus section, merge its heading and content into the current section.
+              currentSection.content += `\n\n${nextSection.heading}\n\n${nextContent}`;
+              j++; // Consume this section and check the next one.
+            } else {
+              break; // Found a real section, stop merging.
+            }
+          }
+          finalSections.push(currentSection);
+          i = j; // Move index to the next non-bogus section.
+        }
+        processedData.sections = finalSections;
+      }
+
       console.log("[v0] Successfully parsed JSON response")
 
       // Post-process to ensure paragraph breaks are consistent
