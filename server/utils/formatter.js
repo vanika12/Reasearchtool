@@ -1,5 +1,4 @@
 import { JSDOM } from "jsdom"
-
 const FONT_FAMILY_TIMES = "font-family: 'Times New Roman';"
 const FONT_SIZE_10 = "font-size: 10pt;"
 const FONT_SIZE_12 = "font-size: 12pt;"

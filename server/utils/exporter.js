@@ -34,21 +34,31 @@ const imagePath = path.join(__dirname, "..", "..", "public", "rsis.jpg");
 const imageBuffer = fs.readFileSync(imagePath);
 const imageBase64 = imageBuffer.toString("base64");
 const imageSrc = `data:image/jpeg;base64,${imageBase64}`;
+
+
+// changes started for errorof missing sections 
+
+// Fallback styles used when a section/subsection doesn't include formatting
+const DEFAULT_HEADING_STYLE = "font-size: 14pt; font-weight: bold; text-transform: uppercase; font-family: 'Times New Roman', serif; text-align: left; margin-top: 20pt; margin-bottom: 10pt;"
+const DEFAULT_SUB_HEADING_STYLE = "font-size: 12pt; font-weight: bold; font-family: 'Times New Roman', serif; text-align: left; margin-top: 12pt; margin-bottom: 6pt;"
+const DEFAULT_CONTENT_STYLE = "font-size: 12pt; font-family: 'Times New Roman', serif; line-height: 1.0; text-align: justify; margin-bottom: 12pt;"
 const esc = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
 export const exportToHTML = async (formattedDocument) => {
+  const doc = formattedDocument || {}
   const {
-    metadata,
-    header,
-    title,
-    authors,
-    affiliations,
-    abstract,
-    keywords,
-    sections,
-    references,
-    footer,
-    publicationInfo,
-  } = formattedDocument
+    metadata = { formatSpecs: { margins: { top: "0.76in", bottom: "0.42in", left: "0.42in", right: "0.42in" } } },
+    header = {},
+    title = { text: "" },
+    authors = { text: "", style: "" },
+    affiliations = [],
+    abstract = { heading: "ABSTRACT", content: "", style: { heading: "", content: "" } },
+    keywords = { heading: "Keywords", content: "", style: { heading: "", content: "" } },
+    sections = [],
+    references = { heading: "REFERENCES", content: [], style: { heading: "", content: "" } },
+    footer = {},
+    publicationInfo = null,
+    imageSrc = ""
+  } = formattedDocument || {}
 
    const headerPartsTmp = []
   if (header?.issn) headerPartsTmp.push(header.issn)
@@ -105,12 +115,12 @@ export const exportToHTML = async (formattedDocument) => {
         }
         
         .title {
-            ${title.style}
+            ${title?.style||""}
             margin: 12pt 0;
         }
         
         .authors {
-            ${authors.style}
+            ${authors?.style||""}
             margin: 10pt 0;
         }
             /* Table formatting */
@@ -170,12 +180,12 @@ export const exportToHTML = async (formattedDocument) => {
         }
         
         .abstract-heading {
-            ${abstract.style.heading}
+            ${abstract?.style?.heading||""}
             margin-bottom: 10pt;
         }
         
         .abstract-content {
-            ${abstract.style.content}
+            ${abstract?.style?.content||""}
             margin-bottom: 15pt;
         }
 
@@ -192,11 +202,11 @@ export const exportToHTML = async (formattedDocument) => {
         }
         
         .keywords-heading {
-            ${keywords.style.heading}
+            ${keywords?.style?.heading||""}
         }
         
         .keywords-content {
-            ${keywords.style.content}
+            ${keywords?.style?.content||""}
         }
         
         .section {
@@ -227,7 +237,7 @@ export const exportToHTML = async (formattedDocument) => {
         }
         
         .references-heading {
-            ${references.style.heading}
+            ${references?.style?.heading||""}
             margin-bottom: 10pt;
         }
         
@@ -306,9 +316,9 @@ export const exportToHTML = async (formattedDocument) => {
 
         <!-- Removed duplicate header from body since it's handled by PDF header template -->
         
-        <div class="title">${title.text}</div>
+        <div class="title">${title.text|| ""}</div>
         
-        <div class="authors">${authors.text}</div>
+        <div class="authors">${authors.text|| ""}</div>
         
         ${
           affiliations && affiliations.length > 0
@@ -317,35 +327,71 @@ export const exportToHTML = async (formattedDocument) => {
             ${affiliations
               .map(
                 (aff) => `
-                <div class="affiliation">
-                    ${aff.text}
+                <div class="affiliation" style="${aff.style || ''}">
+                    <sup>${aff.number|| ""}</sup> ${aff.text|| ""}
                 </div>
             `,
               )
+
               .join("")}
         </div>
         `
             : ""
         }
         
+         ${
+  publicationInfo
+    ? `
+<div class="publication-info">
+    ${
+      publicationInfo.doi
+        ? `<p style="margin-bottom:8pt;"><strong>DOI:</strong> 
+           <a href="${publicationInfo.doi}" style="color: blue; text-decoration: underline;">
+             ${publicationInfo.doi}
+           </a></p>`
+        : ""
+    }
+    ${
+      publicationInfo.received || publicationInfo.accepted || publicationInfo.published
+        ? `<p style="margin-top:6pt;">
+             ${publicationInfo.received ? `<strong>Received:</strong> ${publicationInfo.received}` : ""}
+             ${publicationInfo.accepted ? `; <strong>Accepted:</strong> ${publicationInfo.accepted}` : ""}
+             ${publicationInfo.published ? `; <strong>Published:</strong> ${publicationInfo.published}` : ""}
+           </p>`
+        : ""
+    }
+</div>
+`
+    : ""
+}
+
         ${
-          publicationInfo
-            ? `
-        <div class="publication-info" style="line-height:1.5;">
-            <strong>DOI:</strong> <a href="${publicationInfo.doi}" style="color: blue; text-decoration: underline;">${publicationInfo.doi}</a><br>
-            <strong>Received:</strong> ${publicationInfo.received}; <strong>Accepted:</strong> ${publicationInfo.accepted}; <strong>Published:</strong> ${publicationInfo.published}
-        </div>
-        `
+  (abstract?.heading || abstract?.content)
+    ? `
+    <div class="abstract">
+        <div class="abstract-heading">${abstract.heading || "ABSTRACT"}</div>
+        <div class="abstract-content">${
+          abstract?.content
+            ? applyLatexFormatting(formatCitations(abstract.content))
+                .split(/\n\s*\n/)
+                .map((p) => p.trim())
+                .filter((p) => p)
+                .map((p) => `<p>${p}</p>`)
+                .join("")
             : ""
-        }
-        ${abstract.content ? `<div class="abstract"><div class="abstract-heading">${abstract.heading}</div><div class="abstract-content">${abstract.content}</div></div>` : ""}
+        }</div>
+    </div>
+    `
+    : ""
+}
+
         
         ${
           keywords.content
             ? `
         <div class="keywords">
-            <span class="keywords-heading">${keywords.heading}:</span>
-            <span class="keywords-content">${keywords.content}</span>
+            <span class="keywords-heading">${keywords.heading|| ""}:</span>
+            <span class="keywords-content">${keywords.content|| ""}</span>
         </div>
         `
             : ""
@@ -355,10 +401,22 @@ export const exportToHTML = async (formattedDocument) => {
           .map(
             (section) => `
             <div class="section">
-                <div class="section-heading" style="${section.formatting.headingStyle}">
-                    ${section.heading}
+<div class=\"section-heading\" style=\"${(section && section.formatting && section.formatting.headingStyle) || DEFAULT_HEADING_STYLE}\">
+${esc(section.heading)}
                 </div>
-                <div class="section-content" style="${section.formatting.contentStyle}">${section.content}</div>
+<div class=\"section-content\" style=\"${(section && section.formatting && section.formatting.contentStyle) || DEFAULT_CONTENT_STYLE}\">
+${applyLatexFormatting(formatCitations(section.content|| ""))
+                      .split(/\n\s*\n/)
+                      .map((p) => p.trim())
+                      .filter((p) => p)
+                      .map((p) => {
+                        const plain = p.replace(/<[^>]+>/g, '')
+return isKeywordHeadingOnly(plain)
+? `<div class=\"section-heading\" style=\"${(section && section.formatting && section.formatting.headingStyle) || DEFAULT_HEADING_STYLE}\">${plain}</div>`
+                          : `<p>${p}</p>`
+                      })
+                      .join("")}
+                </div>
                 
                 ${
                   section.subsections && section.subsections.length > 0
@@ -366,10 +424,22 @@ export const exportToHTML = async (formattedDocument) => {
                         .map(
                           (subsection) => `
                         <div class="subsection">
-                            <div class="subsection-heading" style="${subsection.formatting.headingStyle}">
-                                ${subsection.heading}
+<div class=\"subsection-heading\" style=\"${(subsection && subsection.formatting && subsection.formatting.headingStyle) || DEFAULT_SUB_HEADING_STYLE}\">
+${esc(subsection?.heading|| "")}
                             </div>
-                            <div class="section-content" style="${subsection.formatting.contentStyle}">${subsection.content}</div>
+<div class=\"section-content\" style=\"${(subsection && subsection.formatting && subsection.formatting.contentStyle) || DEFAULT_CONTENT_STYLE}\">
+${applyLatexFormatting(formatCitations(subsection?.content|| ""))
+                                  .split(/\n\s*\n/)
+                                  .map((p) => p.trim())
+                                  .filter((p) => p)
+                                  .map((p) => {
+                                    const plain = p.replace(/<[^>]+>/g, '')
+return isKeywordHeadingOnly(plain)
+? `<div class=\"subsection-heading\" style=\"${(subsection && subsection.formatting && subsection.formatting.headingStyle) || DEFAULT_SUB_HEADING_STYLE}\">${plain}</div>`
+                                      : `<p>${p}</p>`
+                                  })
+                                  .join("")}
+                            </div>
                         </div>
                     `,
                         )
@@ -380,6 +450,7 @@ export const exportToHTML = async (formattedDocument) => {
         `,
           )
           .join("")}
+
         
         ${
           references.content && references.content.length > 0
@@ -582,9 +653,98 @@ export const exportToLatex = async (formattedDocument) => {
 
 
 
+// Convert a simple HTML string with <sup> tags into an array of docx TextRun objects
+// Only handles plain text and <sup>...</sup> markers, which is sufficient for author lines
+const supHtmlToRuns = (html, { size = 24, bold = true } = {}) => {
+  if (!html || typeof html !== "string") return []
+  const runs = []
+  // Split on <sup>...</sup> while keeping the tags
+  const parts = html.split(/(<sup>.*?<\/sup>)/gi)
+  parts.forEach((part) => {
+    if (!part) return
+    const supMatch = part.match(/^<sup>(.*?)<\/sup>$/i)
+    if (supMatch) {
+      const text = supMatch[1]
+      if (text) {
+        runs.push(new TextRun({ text, superScript: true, size: Math.max(16, Math.round(size * 0.7)), bold }))
+      }
+    } else {
+      // Remove any other HTML tags defensively
+      const plain = part.replace(/<[^>]+>/g, "")
+      if (plain) {
+        runs.push(new TextRun({ text: plain, size, bold }))
+      }
+    }
+  })
+  return runs
+}
+
+// Normalization and keyword-based heading detection
+const normalizeHeadingText = (s) =>
+  String(s)
+    .trim()
+    .replace(/^\d+(?:\.\d+)*\s*[-.)]?\s*/, "") // strip leading numbering like 2., 2.1, 3.2.4)
+    .replace(/\s+/g, " ") // collapse spaces
+    .replace(/[:.;,\-\s]+$/, "") // strip trailing punctuation/colon
+    .toLowerCase()
+
+const HEADING_KEYWORDS = new Set([
+  "conclusion and recommendation",
+  "conclusion and recommendations",
+  "conclusion",
+  "background study",
+  "literature review",
+  "material",
+  "materials",
+  "methods",
+  "mehtods",
+  "result",
+  "results",
+  "discussion",
+  "findings",
+  "recommendation",
+  "recommendations",
+])
+
+// DOCX: Only promote paragraphs that match explicit keywords
+const isKeywordHeadingOnly = (text) => {
+  if (!text) return false
+  const raw = String(text).trim()
+  if (raw.length === 0) return false
+  const t = normalizeHeadingText(raw)
+  return HEADING_KEYWORDS.has(t)
+}
+
+// Heuristic to detect heading-like lines within plain text
+const isLikelyHeading = (text) => {
+  if (!text) return false
+  const raw = String(text).trim()
+  if (raw.length === 0) return false
+  const t = normalizeHeadingText(raw)
+
+  // Explicit keyword match when the line is just that heading (optionally with numbering)
+  if (HEADING_KEYWORDS.has(t)) return true
+
+  // Numbered headings with short remainder
+  if (/^\d+(?:\.\d+)*\s+/.test(raw) && t.length <= 80) return true
+
+  // Short line without sentence-ending punctuation is likely a heading
+  if (raw.length <= 80 && /[A-Za-z]/.test(raw) && !/[.!?]$/.test(raw)) return true
+
+  return false
+}
+
 export const exportToDocx = async (formattedDocument) => {
-  const { header, title, authors, affiliations, abstract, keywords, sections, references } =
-    formattedDocument;
+  const {
+    header = {},
+    title = { text: "" },
+    authors = { text: "" },
+    affiliations = [],
+    abstract = { heading: "ABSTRACT", content: "" },
+    keywords = { heading: "Keywords", content: "" },
+    sections = [],
+    references = { heading: "REFERENCES", content: [] },
+  } = formattedDocument || {}
 
   const docChildren = [];
   // ---------- Add spacing between header and title ----------
@@ -594,6 +754,7 @@ docChildren.push(
     spacing: { after: 200 }, // ~10pt of space
   }),
 );
+
   // ---------- Title ----------
   docChildren.push(
     new Paragraph({
@@ -606,13 +767,13 @@ docChildren.push(
   // ---------- Authors ----------
   docChildren.push(
     new Paragraph({
-      children: [new TextRun({ text: authors.text, bold: true, size: 24 })],
+      children: supHtmlToRuns(authors.text, { size: 24, bold: true }),
       alignment: AlignmentType.CENTER,
       spacing: { after: 200 },
     }),
   );
 
- // ---------- Affiliations ----------
+  // ---------- Affiliations ----------
   if (affiliations && affiliations.length > 0) {
     affiliations.forEach((aff) => {
       docChildren.push(
@@ -628,6 +789,7 @@ docChildren.push(
     });
     docChildren.push(new Paragraph({ text: "" }));
   }
+
 
 
   // ---------- Abstract ----------
@@ -722,15 +884,23 @@ const cleanParagraphs = section.content
   .filter((p) => p.length > 0);
 
 cleanParagraphs.forEach((p) => {
-  docChildren.push(
-    new Paragraph({
-          children: [new TextRun({ text: p, size: 24 })],
-      alignment: AlignmentType.JUSTIFIED,
-      spacing: { after: 240 }, // ensures visible space between paragraphs
-    }),
-  );
+  if (isKeywordHeadingOnly(p)) {
+    docChildren.push(
+      new Paragraph({
+        children: [new TextRun({ text: p, bold: true, allCaps: true, size: 28 })],
+        spacing: { before: 400, after: 200 },
+      }),
+    );
+  } else {
+    docChildren.push(
+      new Paragraph({
+        children: [new TextRun({ text: p, size: 24 })],
+        alignment: AlignmentType.JUSTIFIED,
+        spacing: { after: 240 },
+      }),
+    );
+  }
 });
-
     if (section.subsections && section.subsections.length > 0) {
       section.subsections.forEach((subsection) => {
         docChildren.push(
@@ -755,13 +925,22 @@ cleanParagraphs.forEach((p) => {
           .filter((p) => p.length > 0);
 
         subCleanParagraphs.forEach((p) => {
-          docChildren.push(
-            new Paragraph({
-              children: [new TextRun({ text: p, size: 24 })],
-              alignment: AlignmentType.JUSTIFIED,
-              spacing: { after: 240 },
-            }),
-          );
+          if (isKeywordHeadingOnly(p)) {
+            docChildren.push(
+              new Paragraph({
+                children: [new TextRun({ text: p, bold: true, allCaps: true, size: 28 })],
+                spacing: { before: 240, after: 120 },
+              }),
+            );
+          } else {
+            docChildren.push(
+              new Paragraph({
+                children: [new TextRun({ text: p, size: 24 })],
+                alignment: AlignmentType.JUSTIFIED,
+                spacing: { after: 240 },
+              }),
+            );
+          }
         });
       });
     }
@@ -797,8 +976,7 @@ cleanParagraphs.forEach((p) => {
     });
   }
 
-
- // Build a minimal header without logo: right-aligned lines only
+  // Build a minimal header without logo: right-aligned lines only
   const headerChildren = [];
 
   headerChildren.push(
@@ -863,7 +1041,6 @@ const docxFooter = new Footer({
     }),
   ],
 });
-
   // ---------- Document ----------
   const doc = new Document({
     sections: [
@@ -878,6 +1055,7 @@ const docxFooter = new Footer({
               right: convertInchesToTwip(0.42),
               bottom: convertInchesToTwip(0.42),
               left: convertInchesToTwip(0.42),
+              footer: convertInchesToTwip(0.2), //
             },
           },
         },
@@ -890,6 +1068,7 @@ const docxFooter = new Footer({
   const buffer = await Packer.toBuffer(doc);
   return buffer;
 };
+
 
 export const validateExport = (format, content) => {
   const validFormats = ["html", "xml", "pdf", "latex", "docx"]
