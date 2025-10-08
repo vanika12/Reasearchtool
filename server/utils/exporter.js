@@ -401,18 +401,18 @@ export const exportToHTML = async (formattedDocument) => {
           .map(
             (section) => `
             <div class="section">
-<div class=\"section-heading\" style=\"${(section && section.formatting && section.formatting.headingStyle) || DEFAULT_HEADING_STYLE}\">
-${esc(section.heading)}
+<div class=\"section-heading\" style=\"${section?.formatting?.headingStyle || DEFAULT_HEADING_STYLE}\">
+${esc(section?.heading || "")}
                 </div>
-<div class=\"section-content\" style=\"${(section && section.formatting && section.formatting.contentStyle) || DEFAULT_CONTENT_STYLE}\">
-${applyLatexFormatting(formatCitations(section.content|| ""))
+<div class=\"section-content\" style=\"${section?.formatting?.contentStyle || DEFAULT_CONTENT_STYLE}\">
+${applyLatexFormatting(formatCitations(section?.content || ""))
                       .split(/\n\s*\n/)
                       .map((p) => p.trim())
                       .filter((p) => p)
                       .map((p) => {
                         const plain = p.replace(/<[^>]+>/g, '')
-return isKeywordHeadingOnly(plain)
-? `<div class=\"section-heading\" style=\"${(section && section.formatting && section.formatting.headingStyle) || DEFAULT_HEADING_STYLE}\">${plain}</div>`
+return isKeywordHeadingOnly(plain) ?
+`<div class=\"section-heading\" style=\"${section?.formatting?.headingStyle || DEFAULT_HEADING_STYLE}\">${plain}</div>`
                           : `<p>${p}</p>`
                       })
                       .join("")}
@@ -424,18 +424,18 @@ return isKeywordHeadingOnly(plain)
                         .map(
                           (subsection) => `
                         <div class="subsection">
-<div class=\"subsection-heading\" style=\"${(subsection && subsection.formatting && subsection.formatting.headingStyle) || DEFAULT_SUB_HEADING_STYLE}\">
-${esc(subsection?.heading|| "")}
+<div class=\"subsection-heading\" style=\"${subsection?.formatting?.headingStyle || DEFAULT_SUB_HEADING_STYLE}\">
+${esc(subsection?.heading || "")}
                             </div>
-<div class=\"section-content\" style=\"${(subsection && subsection.formatting && subsection.formatting.contentStyle) || DEFAULT_CONTENT_STYLE}\">
-${applyLatexFormatting(formatCitations(subsection?.content|| ""))
+<div class=\"section-content\" style=\"${subsection?.formatting?.contentStyle || DEFAULT_CONTENT_STYLE}\">
+${applyLatexFormatting(formatCitations(subsection?.content || ""))
                                   .split(/\n\s*\n/)
                                   .map((p) => p.trim())
                                   .filter((p) => p)
                                   .map((p) => {
                                     const plain = p.replace(/<[^>]+>/g, '')
-return isKeywordHeadingOnly(plain)
-? `<div class=\"subsection-heading\" style=\"${(subsection && subsection.formatting && subsection.formatting.headingStyle) || DEFAULT_SUB_HEADING_STYLE}\">${plain}</div>`
+return isKeywordHeadingOnly(plain) ?
+`<div class=\"subsection-heading\" style=\"${subsection?.formatting?.headingStyle || DEFAULT_SUB_HEADING_STYLE}\">${plain}</div>`
                                       : `<p>${p}</p>`
                                   })
                                   .join("")}
@@ -779,7 +779,7 @@ docChildren.push(
       docChildren.push(
         new Paragraph({
           children: [
-            new TextRun({ text: String(aff.number), superScript: true, size: 18 }),
+          new TextRun({ text: String(aff.number || ''), superScript: true, size: 18 }),
             new TextRun({ text: " " + aff.text, size: 24, bold: true }),
           ],
           alignment: AlignmentType.CENTER,
@@ -798,7 +798,7 @@ docChildren.push(
       new Paragraph({
         children: [
           new TextRun({
-            text: abstract.heading,
+            text: abstract.heading || 'ABSTRACT',
             bold: true,
             allCaps: true,
             size: 28,
@@ -848,7 +848,7 @@ docChildren.push(
       new Paragraph({
         children: [
           new TextRun({
-            text: section.heading,
+            text: section.heading || '',
             bold: true,
             allCaps: true,
             size: 28,
@@ -907,7 +907,7 @@ cleanParagraphs.forEach((p) => {
           new Paragraph({
             children: [
               new TextRun({
-                text: subsection.heading,
+                text: subsection.heading || '',
                 bold: true,
                 size: 24,
               }),
@@ -952,7 +952,7 @@ cleanParagraphs.forEach((p) => {
       new Paragraph({
         children: [
           new TextRun({
-            text: references.heading,
+            text: references.heading || 'REFERENCES',
             bold: true,
             allCaps: true,
             size: 28,
